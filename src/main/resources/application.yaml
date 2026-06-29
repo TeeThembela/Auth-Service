@@ -1,0 +1,29 @@
+spring:
+  application:
+    name: Auth-Service
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:postgresql://localhost:5433/auth-service
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  sql:
+    init:
+      mode: never
+
+application:
+  security:
+    jwt:
+      secret-key: ${JWT_SECRET_KEY}
+      access-token-expiration: ${JWT_ACCESS_EXPIRATION}
+      refresh-token-expiration: ${JWT_REFRESH_EXPIRATION}
+      issuer: ${JWT_ISSUER}
