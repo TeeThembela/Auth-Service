@@ -36,7 +36,13 @@ public class User {
     private String password;
 
     @Builder.Default
-    private boolean enabled = true;
+    private boolean enabled = false;
+
+    @Column(name = "verification_code", length = 6)
+    private String verificationCode;
+
+    @Column(name = "verification_code_expires_at")
+    private Instant verificationCodeExpiresAt;
 
     @Builder.Default
     private boolean accountNonExpired = true;

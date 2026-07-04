@@ -12,4 +12,6 @@ public interface AuthService {
     Map<String, TokenResult> refresh(String refreshToken);
     void logout(String refreshToken);
     void logoutAll(String username);
+    void sendVerificationCode(String username);
+    void verifyCode(String username, String verificationCode);
 }
