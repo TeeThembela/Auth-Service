@@ -10,8 +10,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.authentication.*;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestCookieException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -27,7 +30,12 @@ import java.util.Set;
 public class GlobalExceptionHandler {
 
     private static final Set<String> CONFLICT_CODES = Set.of(
-            "EMAIL_ALREADY_EXISTS"
+            "EMAIL_ALREADY_EXISTS",
+            "ACCOUNT_ALREADY_VERIFIED"
+    );
+
+    private static final Set<String> NOT_FOUND_CODES = Set.of(
+            "USER_NOT_FOUND"
     );
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -87,6 +95,54 @@ public class GlobalExceptionHandler {
         ));
     }
 
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMethodNotSupported(
+            HttpRequestMethodNotSupportedException ex, HttpServletRequest request) {
+
+        log.warn("Method not allowed at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(new ErrorResponse(
+                "Method Not Allowed",
+                HttpStatus.METHOD_NOT_ALLOWED.value(),
+                String.format("Method '%s' is not supported for this endpoint", ex.getMethod()),
+                request.getRequestURI(),
+                Instant.now(),
+                null
+        ));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponse> handleMediaTypeNotSupported(
+            HttpMediaTypeNotSupportedException ex, HttpServletRequest request) {
+
+        log.warn("Unsupported media type at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(new ErrorResponse(
+                "Unsupported Media Type",
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(),
+                "Content-Type must be application/json",
+                request.getRequestURI(),
+                Instant.now(),
+                null
+        ));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParam(
+            MissingServletRequestParameterException ex, HttpServletRequest request) {
+
+        log.warn("Missing parameter at {}: {}", request.getRequestURI(), ex.getMessage());
+
+        return ResponseEntity.badRequest().body(new ErrorResponse(
+                "Missing Parameter",
+                HttpStatus.BAD_REQUEST.value(),
+                String.format("Required parameter '%s' is missing", ex.getParameterName()),
+                request.getRequestURI(),
+                Instant.now(),
+                null
+        ));
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> handleNoResourceFound(
             NoResourceFoundException ex, HttpServletRequest request) {
@@ -122,6 +178,7 @@ public class GlobalExceptionHandler {
                 null
         ));
     }
+
     @ExceptionHandler(JwtException.class)
     public ResponseEntity<ErrorResponse> handleJwtException(
             JwtException ex, HttpServletRequest request) {
@@ -190,9 +247,15 @@ public class GlobalExceptionHandler {
         Map<String, String> details = new HashMap<>();
         details.put(ex.getErrorCode(), ex.getMessage());
 
-        HttpStatus status = CONFLICT_CODES.contains(ex.getErrorCode())
-                ? HttpStatus.CONFLICT
-                : HttpStatus.BAD_REQUEST;
+        HttpStatus status;
+
+        if (NOT_FOUND_CODES.contains(ex.getErrorCode())) {
+            status = HttpStatus.NOT_FOUND;
+        } else if (CONFLICT_CODES.contains(ex.getErrorCode())) {
+            status = HttpStatus.CONFLICT;
+        } else  {
+            status = HttpStatus.BAD_REQUEST;
+        }
 
         return ResponseEntity.status(status).body(new ErrorResponse(
                 status.getReasonPhrase(),

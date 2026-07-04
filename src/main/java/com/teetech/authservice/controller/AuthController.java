@@ -1,6 +1,7 @@
 package com.teetech.authservice.controller;
 
 import com.teetech.authservice.dto.auth.AuthResponse;
+import com.teetech.authservice.dto.auth.CodeVerificationRequest;
 import com.teetech.authservice.dto.auth.LoginRequest;
 import com.teetech.authservice.dto.auth.RegisterRequest;
 import com.teetech.authservice.dto.common.ApiResponse;
@@ -31,7 +32,8 @@ public class AuthController {
         authService.register(request);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
-                        ApiResponse.success("Registration successful")
+                        ApiResponse.success("Verify the email to complete registration." +
+                                "Verification code sent to your email.")
                 );
     }
 
@@ -128,4 +130,17 @@ public class AuthController {
         response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
         return ResponseEntity.noContent().build();
     }
+
+    @PostMapping("/send-code")
+    public ResponseEntity<ApiResponse<String>> sendCode(@RequestParam String email){
+        authService.sendVerificationCode(email);
+        return ResponseEntity.ok(ApiResponse.success("Verification Code Sent"));
+    }
+
+    @PostMapping("/verify")
+    public ResponseEntity<ApiResponse<String>> verifyCode(@Valid @RequestBody CodeVerificationRequest request){
+        authService.verifyCode(request.email(), request.code());
+        return ResponseEntity.ok(ApiResponse.success("Email successfully verified"));
+    }
+
 }
