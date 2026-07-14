@@ -33,7 +33,7 @@ public class AuthController {
 
         return ResponseEntity.status(HttpStatus.CREATED).body(
                         ApiResponse.success("Verify the email to complete registration." +
-                                "Verification code sent to your email.")
+                                " Verification code sent to your email.")
                 );
     }
 

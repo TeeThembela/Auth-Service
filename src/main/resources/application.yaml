@@ -31,8 +31,6 @@ spring:
           starttls:
             enable: true
 
-
-
 application:
   mail-sender: ${MAIL_SENDER}
   security:
@@ -41,3 +39,5 @@ application:
       access-token-expiration: ${JWT_ACCESS_EXPIRATION}
       refresh-token-expiration: ${JWT_REFRESH_EXPIRATION}
       issuer: ${JWT_ISSUER}
+  scheduler:
+    refresh-token-cleanup-cron: ${RT_CLEANUP_CRON:0 0 2 * * *}
