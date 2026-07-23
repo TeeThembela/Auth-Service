@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
+import java.util.Map;
+
 import static com.teetech.authservice.util.SecurityConstants.*;
 
 @Service
@@ -25,14 +27,14 @@ public class EmailServiceImpl implements EmailService {
     private String sender;
 
     @Override
-    public void sendEmailVerification(String recipient, String code) {
+    public void sendEmailVerification(String recipient, String code, Map<String, Object> metadata) {
 
         // Set the html placeholders
         Context context = new Context();
         context.setVariable("code", formatCode(code));
-        context.setVariable("expiryMinutes", VERIFICATION_CODE_EXPIRY);
+        context.setVariable("expiryMinutes", metadata.get("expiryMinutes"));
 
-        String html = templateEngine.process("email/verification-email", context);
+        String html = templateEngine.process(metadata.get("template").toString(), context);
 
         // Create a MimeMessage empty message container
         MimeMessage message = mailSender.createMimeMessage();
@@ -44,13 +46,13 @@ public class EmailServiceImpl implements EmailService {
             // Set standard email fields
             helper.setFrom(sender);
             helper.setTo(recipient);
-            helper.setSubject("Your Verification Code");
+            helper.setSubject(metadata.get("subject").toString());
             helper.setText(html, true);
 
             // Hand it to JavaMailSender to send via SMTP
             mailSender.send(message);
         } catch (MessagingException e) {
-            throw new RuntimeException("Failed to send verification email", e);
+            throw new RuntimeException(metadata.get("errorMessage").toString(), e);
         }
     }
 

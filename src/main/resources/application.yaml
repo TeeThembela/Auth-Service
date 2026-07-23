@@ -1,6 +1,6 @@
 spring:
   application:
-    name: Auth-Service
+    name: TeeGate
   profiles:
     active: local
   datasource:
@@ -38,6 +38,7 @@ application:
       secret-key: ${JWT_SECRET_KEY}
       access-token-expiration: ${JWT_ACCESS_EXPIRATION}
       refresh-token-expiration: ${JWT_REFRESH_EXPIRATION}
+      password-reset-token-expiration: ${JWT_PASSWORD_RESET_EXPIRATION}
       issuer: ${JWT_ISSUER}
   scheduler:
     refresh-token-cleanup-cron: ${RT_CLEANUP_CRON:0 0 2 * * *}

@@ -48,7 +48,9 @@ public class JwtUtil {
             throw new IllegalArgumentException("JWT secret key must be at least 32 bytes, got: " + decoded.length);
         }
 
-        if (jwtProperties.getAccessTokenExpiration() <= 0 || jwtProperties.getRefreshTokenExpiration() <= 0){
+        if (jwtProperties.getAccessTokenExpiration() <= 0
+                || jwtProperties.getRefreshTokenExpiration() <= 0
+                || jwtProperties.getPasswordResetTokenExpiration() <= 0) {
             log.warn("JWT expiration values should be positive");
             throw new IllegalArgumentException("JWT expiration values must be positive");
         }
@@ -68,7 +70,6 @@ public class JwtUtil {
         String token = Jwts.builder()
                 .header().add("type", "JWT").and()
                 .claims(claims)
-                .subject(principal.getUserId().toString())
                 .claim("email", principal.getUsername())
                 .issuer(jwtProperties.getIssuer())
                 .issuedAt(now)
@@ -81,6 +82,7 @@ public class JwtUtil {
 
     public TokenResult generateAccessToken(UserPrincipal principal){
         Map<String, Object> claims = new LinkedHashMap<>();
+        claims.put("sub", principal.getUserId().toString());
         claims.put("token_type", "access");
         claims.put("authorities", principal.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
@@ -95,6 +97,11 @@ public class JwtUtil {
                 jwtProperties.getRefreshTokenExpiration());
     }
 
+    public TokenResult generatePasswordResetToken(UserPrincipal principal){
+        return tokenBuilder(principal, Map.of("token_type", "password_reset")
+        , jwtProperties.getPasswordResetTokenExpiration());
+    }
+
     private Claims extractAllClaims(String token){
         return Jwts.parser()
                 .verifyWith(secretKey)
@@ -104,12 +111,8 @@ public class JwtUtil {
                 .getPayload();
     }
 
-    private <T> T extractClaim(String token, Function<Claims, T> resolver){
-        return resolver.apply(extractAllClaims(token));
-    }
-
     public String extractSubject(String token){
-        return extractClaim(token, Claims::getSubject);
+        return extractAllClaims(token).get("sub", String.class);
     }
 
     public String extractUsername(String token){
@@ -119,7 +122,7 @@ public class JwtUtil {
     @SuppressWarnings("unchecked")
     public Collection<? extends GrantedAuthority> extractAuthorities(String token){
         List<String> authorities = extractAllClaims(token).get("authorities", List.class);
-
+        if (authorities == null) return Set.of();
         return authorities.stream()
                 .map(SimpleGrantedAuthority::new)
                 .collect(Collectors.toSet());
@@ -133,5 +136,10 @@ public class JwtUtil {
     public boolean isRefreshTokenValid(String token){
         Claims claims = extractAllClaims(token);
         return "refresh".equals(claims.get("token_type"));
+    }
+
+    public boolean isPasswordResetTokenValid(String token){
+        Claims claims = extractAllClaims(token);
+        return "password_reset".equals(claims.get("token_type"));
     }
 }

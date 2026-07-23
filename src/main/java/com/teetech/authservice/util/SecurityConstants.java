@@ -11,7 +11,11 @@ public class SecurityConstants {
             "/api/v1/auth/login",
             "/api/v1/auth/refresh",
             "/api/v1/auth/send-code",
-            "/api/v1/auth/verify"
+            "/api/v1/auth/verify",
+            "/api/v1/auth/forgot-password",
+            "/api/v1/auth/verify-reset-code",
+            "/api/v1/auth/reset-password"
     };
     public static final int VERIFICATION_CODE_EXPIRY = 15;
+    public static final int PASSWORD_RESET_CODE_EXPIRY = 10;
 }

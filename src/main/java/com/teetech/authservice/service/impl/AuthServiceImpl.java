@@ -49,9 +49,10 @@ public class AuthServiceImpl implements AuthService {
         log.info("Registering username={}", request.email());
 
         // Check email is not already used
-        if (userRepository.existsByUsername(request.email())){
-            log.warn("Email already used. email={}", request.email());
-            throw new EmailAlreadyExistsException("Email already exists", request.email());
+        String email = request.email().toLowerCase();
+        if (userRepository.existsByUsername(email)){
+            log.warn("Email already used. email={}", email);
+            throw new EmailAlreadyExistsException("Email already exists", email);
         }
 
         // Fetch the authority
@@ -63,11 +64,11 @@ public class AuthServiceImpl implements AuthService {
 
         // Generate verification code and set expiration time
         String verificationCode = generateVerificationCode();
-        Instant expiryAt = generateCodeExpiryMinutes();
+        Instant expiryAt = generateCodeExpiryMinutes(VERIFICATION_CODE_EXPIRY);
 
         // Build the user
         User user = User.builder()
-                .username(request.email())
+                .username(email)
                 .password(passwordEncoder.encode(request.password()))
                 .authorities(new HashSet<>(Set.of(authority)))
                 .verificationCode(verificationCode)
@@ -77,8 +78,15 @@ public class AuthServiceImpl implements AuthService {
         // Persist the user
         User saved = userRepository.save(user);
 
-        // Send verification code
-        emailService.sendEmailVerification(saved.getUsername(), verificationCode);
+        // Compose email metadata
+        Map<String, Object> mailMetadata = new HashMap<>();
+        mailMetadata.put("template", "email/verification-email");
+        mailMetadata.put("subject", "Your Verification Code");
+        mailMetadata.put("expiryMinutes", VERIFICATION_CODE_EXPIRY);
+        mailMetadata.put("errorMessage", "Failed to send verification code email");
+
+        // Send verification
+        emailService.sendEmailVerification(saved.getUsername(), verificationCode, mailMetadata);
 
         log.info("Successfully registered the user. userId={}",saved.getId());
     }
@@ -185,13 +193,14 @@ public class AuthServiceImpl implements AuthService {
                     .minus(VERIFICATION_CODE_EXPIRY - 2, ChronoUnit.MINUTES);
 
             if (Instant.now().isBefore(cooldownEnd)) {
-                throw new TooManyRequestsException("Please wait before requesting a new code");
+                log.warn("Too many requests for a new code");
+                throw new TooManyRequestsException("Please wait 2 minutes before requesting a new code");
             }
         }
 
         // Generate verification code and set expiration time
         String verificationCode = generateVerificationCode();
-        Instant expiryAt = generateCodeExpiryMinutes();
+        Instant expiryAt = generateCodeExpiryMinutes(VERIFICATION_CODE_EXPIRY);
         
         // Update the user verification code and expiration time
         user.setVerificationCode(verificationCode);
@@ -199,12 +208,71 @@ public class AuthServiceImpl implements AuthService {
         
         // Persist the user
         userRepository.save(user);
+
+        // Compose email metadata
+        Map<String, Object> mailMetadata = new HashMap<>();
+        mailMetadata.put("template", "email/verification-email");
+        mailMetadata.put("subject", "Your Verification Code");
+        mailMetadata.put("expiryMinutes", VERIFICATION_CODE_EXPIRY);
+        mailMetadata.put("errorMessage", "Failed to send verification code email");
         
         // Send verification
-        emailService.sendEmailVerification(username, verificationCode);
+        emailService.sendEmailVerification(username, verificationCode, mailMetadata);
         
         log.debug("Successfully sent a new verification, which expires at: {}", expiryAt);
     }
+
+    @Transactional
+    @Override
+    public void sendPasswordResetCode(String username) {
+        log.debug("Sending a password reset code for username={}", username);
+
+        // Fetch the user
+        Optional<User> optionalUser = userRepository.findByUsername(username.toLowerCase());
+        if (optionalUser.isEmpty()) return;
+
+        User user = optionalUser.get();
+
+        // Check if the account is verified
+        if (!user.isEnabled()) {
+            return;
+        }
+
+        // Ensure user can only request a new code 2 minutes after the previous one
+        if (user.getVerificationCodeExpiresAt() != null) {
+            Instant cooldownEnd = user.getVerificationCodeExpiresAt()
+                    .minus(PASSWORD_RESET_CODE_EXPIRY - 2, ChronoUnit.MINUTES);
+
+            if (Instant.now().isBefore(cooldownEnd)) {
+                log.warn("Too many requests for a new code");
+                throw new TooManyRequestsException("Please wait 2 minutes before requesting a new code");
+            }
+        }
+
+        // Generate verification code and set expiration time
+        String verificationCode = generateVerificationCode();
+        Instant expiryAt = generateCodeExpiryMinutes(PASSWORD_RESET_CODE_EXPIRY);
+
+        // Update the user verification code and expiration time
+        user.setVerificationCode(verificationCode);
+        user.setVerificationCodeExpiresAt(expiryAt);
+
+        // Persist the user
+        userRepository.save(user);
+
+        // Compose email metadata
+        Map<String, Object> mailMetadata = new HashMap<>();
+        mailMetadata.put("template", "email/password-reset-email");
+        mailMetadata.put("subject", "Your Password Reset Code");
+        mailMetadata.put("expiryMinutes", PASSWORD_RESET_CODE_EXPIRY);
+        mailMetadata.put("errorMessage", "Failed to send password reset email");
+
+        // Send verification
+        emailService.sendEmailVerification(username, verificationCode, mailMetadata);
+
+        log.debug("Successfully sent a new password rest code, which expires at: {}", expiryAt);
+    }
+
 
     @Transactional
     @Override
@@ -246,6 +314,86 @@ public class AuthServiceImpl implements AuthService {
         log.debug("Code successfully verified.");
     }
 
+    @Transactional
+    @Override
+    public TokenResult verifyPasswordResetCode(String username, String verificationCode) {
+        log.debug("Verify password reset code={} for username={}", verificationCode, username);
+
+        // Fetch the user by username
+        User user = null;
+        try {
+            user = findUserOrThrow(username);
+        } catch (UserNotFoundException e) {
+            log.warn("Invalid or expired reset code");
+            throw new InvalidVerificationCodeException("Invalid or expired reset code");
+        }
+
+        // Check if the password reset was requested
+        if (user.getVerificationCode() == null || user.getVerificationCodeExpiresAt() == null) {
+            log.warn("No password reset was requested");
+            throw new InvalidVerificationCodeException("No password reset was requested");
+        }
+
+        // Check the expiration
+        if (user.getVerificationCodeExpiresAt().isBefore(Instant.now())){
+            log.warn("Password reset code expired at {}.", user.getVerificationCodeExpiresAt());
+            throw new InvalidVerificationCodeException("Password reset code expired");
+        }
+
+        // Check verification code matches
+        if (!user.getVerificationCode().equals(verificationCode)){
+            log.warn("Password reset code doesn't match.");
+            throw new InvalidVerificationCodeException("Password reset code doesn't match.");
+        }
+
+        // Clear the user verification code and expiration time
+        user.setVerificationCode(null);
+        user.setVerificationCodeExpiresAt(null);
+
+        // Persist the user
+        userRepository.save(user);
+
+        // Generate password reset token
+        TokenResult token = jwtUtil.generatePasswordResetToken(new UserPrincipal(user));
+
+        log.debug("Password reset code is successfully verified.");
+
+        // return TokenResult
+        return token;
+    }
+
+    @Transactional
+    @Override
+    public void setNewPassword(String passwordResetToken, String newPassword) {
+        log.debug("Setting a new password");
+
+        // Verify the password reset token
+        if(!jwtUtil.isPasswordResetTokenValid(passwordResetToken)){
+            log.warn("The password reset token is invalid");
+            throw new InvalidTokenException("Password reset token is invalid");
+        }
+
+        // Extract the username from the token
+        String username = jwtUtil.extractUsername(passwordResetToken);
+
+        // Fetch the user
+        User user = findUserOrThrow(username);
+
+        // Set a new password
+        user.setPassword(passwordEncoder.encode(newPassword));
+
+        // Persist the user
+        userRepository.save(user);
+
+        log.debug("Successfully updated the password for user={}", username);
+
+        // Delete all refresh tokens for this user
+        // To force re-login on all devices
+        logoutAll(username);
+    }
+
+
+    // HELPER METHODS
 
     private Map<String, TokenResult> buildTokenResponse(UserPrincipal principal){
         log.debug("Building the tokens for userId={}", principal.getUserId());
@@ -293,14 +441,14 @@ public class AuthServiceImpl implements AuthService {
         return String.format("%06d", number);
     }
 
-    private Instant generateCodeExpiryMinutes() {
-        return Instant.now().plus(VERIFICATION_CODE_EXPIRY, ChronoUnit.MINUTES);
+    private Instant generateCodeExpiryMinutes(int codeExpiry) {
+        return Instant.now().plus(codeExpiry, ChronoUnit.MINUTES);
     }
 
     private User findUserOrThrow(String username) {
         log.debug("Fetching a user with username={}", username);
 
-        return userRepository.findByUsername(username)
+        return userRepository.findByUsername(username.toLowerCase())
                 .orElseThrow(() -> {
                     log.warn("User not found with username={}", username);
                     return new UserNotFoundException("User not found with username", username);

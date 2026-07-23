@@ -13,5 +13,8 @@ public interface AuthService {
     void logout(String refreshToken);
     void logoutAll(String username);
     void sendVerificationCode(String username);
+    void sendPasswordResetCode(String username);
     void verifyCode(String username, String verificationCode);
+    TokenResult verifyPasswordResetCode(String username, String verificationCode);
+    void setNewPassword(String passwordResetToken, String newPassword);
 }
