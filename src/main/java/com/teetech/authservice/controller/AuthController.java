@@ -1,9 +1,6 @@
 package com.teetech.authservice.controller;
 
-import com.teetech.authservice.dto.auth.AuthResponse;
-import com.teetech.authservice.dto.auth.CodeVerificationRequest;
-import com.teetech.authservice.dto.auth.LoginRequest;
-import com.teetech.authservice.dto.auth.RegisterRequest;
+import com.teetech.authservice.dto.auth.*;
 import com.teetech.authservice.dto.common.ApiResponse;
 import com.teetech.authservice.dto.token.TokenResult;
 import com.teetech.authservice.security.model.UserPrincipal;
@@ -143,4 +140,48 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Email successfully verified"));
     }
 
+    @PostMapping("/forgot-password")
+    public ResponseEntity<ApiResponse<String>> forgotPassword(@Valid @RequestBody EmailDTO request){
+        authService.sendPasswordResetCode(request.email());
+        return ResponseEntity.ok(ApiResponse.success("If an account exists with this email, a reset code has been sent"));
+    }
+
+    @PostMapping("/verify-reset-code")
+    public ResponseEntity<ApiResponse<String>> verifyResetCode(@Valid @RequestBody CodeVerificationRequest request,
+                                                               HttpServletResponse response){
+
+        TokenResult token = authService.verifyPasswordResetCode(request.email(), request.code());
+
+        ResponseCookie cookie = ResponseCookie
+                .from("passwordResetToken", token.token())
+                .httpOnly(true)
+                .secure(true)
+                .sameSite("Strict")
+                .path("/api/v1/auth/reset-password")
+                .maxAge(Duration.ofMinutes(10))
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+
+        return ResponseEntity.ok(ApiResponse.success("Reset code verified successfully"));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<ApiResponse<String>> resetPassword(@CookieValue(name = "passwordResetToken") String passwordResetToken,
+                                       @Valid @RequestBody NewPasswordDTO request,
+                                       HttpServletResponse response){
+        authService.setNewPassword(passwordResetToken, request.password());
+
+        ResponseCookie cookie = ResponseCookie
+                .from("passwordResetToken", "")
+                .httpOnly(true)
+                .secure(true)
+                .sameSite("Strict")
+                .path("/api/v1/auth/reset-password")
+                .maxAge(Duration.ZERO)
+                .build();
+
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        return ResponseEntity.ok(ApiResponse.success("Password successfully updated"));
+    }
 }

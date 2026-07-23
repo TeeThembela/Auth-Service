@@ -38,6 +38,10 @@ public class GlobalExceptionHandler {
             "USER_NOT_FOUND"
     );
 
+    private static final Set<String> TOO_MANY_REQUESTS_CODES = Set.of(
+            "TOO_MANY_CODE_REQUESTS"
+    );
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleMethodArgValidation(
             MethodArgumentNotValidException ex, HttpServletRequest request) {
@@ -253,6 +257,8 @@ public class GlobalExceptionHandler {
             status = HttpStatus.NOT_FOUND;
         } else if (CONFLICT_CODES.contains(ex.getErrorCode())) {
             status = HttpStatus.CONFLICT;
+        } else if (TOO_MANY_REQUESTS_CODES.contains(ex.getErrorCode())) {
+            status = HttpStatus.TOO_MANY_REQUESTS;
         } else  {
             status = HttpStatus.BAD_REQUEST;
         }
@@ -276,7 +282,7 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(
                 "Unauthorized",
                 HttpStatus.UNAUTHORIZED.value(),
-                "Refresh token missing",
+                "Refresh token or Password reset token missing",
                 request.getRequestURI(),
                 Instant.now(),
                 null
