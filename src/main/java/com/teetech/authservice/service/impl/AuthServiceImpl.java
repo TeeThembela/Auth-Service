@@ -1,21 +1,23 @@
 package com.teetech.authservice.service.impl;
 
+import com.teetech.authservice.dto.event.CodeEmailRequestedEvent;
 import com.teetech.authservice.dto.auth.LoginRequest;
 import com.teetech.authservice.dto.auth.RegisterRequest;
 import com.teetech.authservice.dto.token.TokenResult;
 import com.teetech.authservice.entity.Authority;
 import com.teetech.authservice.entity.RefreshToken;
 import com.teetech.authservice.entity.User;
+import com.teetech.authservice.enums.EmailPurpose;
 import com.teetech.authservice.exception.*;
 import com.teetech.authservice.repository.AuthorityRepository;
 import com.teetech.authservice.repository.RefreshTokenRepository;
 import com.teetech.authservice.repository.UserRepository;
 import com.teetech.authservice.security.model.UserPrincipal;
 import com.teetech.authservice.service.AuthService;
-import com.teetech.authservice.service.EmailService;
 import com.teetech.authservice.util.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -40,16 +42,16 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final EmailService emailService;
-
+    private final ApplicationEventPublisher eventPublisher;
+    private static final String INVALID_RESET_CODE = "Invalid or expired reset code";
 
     @Transactional
     @Override
     public void register(RegisterRequest request) {
-        log.info("Registering username={}", request.email());
+        String email = request.email();
+        log.info("Registering username={}", email);
 
         // Check email is not already used
-        String email = request.email().toLowerCase();
         if (userRepository.existsByUsername(email)){
             log.warn("Email already used. email={}", email);
             throw new EmailAlreadyExistsException("Email already exists", email);
@@ -59,7 +61,7 @@ public class AuthServiceImpl implements AuthService {
         Authority authority = authorityRepository.findByName("ROLE_USER")
                 .orElseThrow(() -> {
                     log.warn("ROLE_USER not found.");
-                    return new IllegalStateException("ROLE_USER not found — seed authorities first");
+                    return new IllegalStateException("ROLE_USER not found, seed authorities first");
                 });
 
         // Generate verification code and set expiration time
@@ -78,15 +80,9 @@ public class AuthServiceImpl implements AuthService {
         // Persist the user
         User saved = userRepository.save(user);
 
-        // Compose email metadata
-        Map<String, Object> mailMetadata = new HashMap<>();
-        mailMetadata.put("template", "email/verification-email");
-        mailMetadata.put("subject", "Your Verification Code");
-        mailMetadata.put("expiryMinutes", VERIFICATION_CODE_EXPIRY);
-        mailMetadata.put("errorMessage", "Failed to send verification code email");
-
-        // Send verification
-        emailService.sendEmailVerification(saved.getUsername(), verificationCode, mailMetadata);
+        // Publish the event, the email is sent only after this transaction commits
+        eventPublisher.publishEvent(new CodeEmailRequestedEvent(saved.getUsername(), formatCode(verificationCode),
+                EmailPurpose.EMAIL_VERIFICATION));
 
         log.info("Successfully registered the user. userId={}",saved.getId());
     }
@@ -125,7 +121,6 @@ public class AuthServiceImpl implements AuthService {
 
         // Check if the token is expired
         if (targetToken.getExpiresAt().isBefore(Instant.now())) {
-            refreshTokenRepository.delete(targetToken);
             log.warn("Refresh token has expired at={}", targetToken.getExpiresAt());
             throw new InvalidTokenException("Refresh token has expired");
         }
@@ -184,6 +179,7 @@ public class AuthServiceImpl implements AuthService {
         User user = findUserOrThrow(username);
 
         if (user.isEnabled()) {
+            log.warn("Account is already verified. username={}", username);
             throw new AccountAlreadyVerifiedException("Account is already verified");
         }
 
@@ -208,18 +204,11 @@ public class AuthServiceImpl implements AuthService {
         
         // Persist the user
         userRepository.save(user);
+        
+        // Publish the event, the email is sent only after this transaction commits
+        eventPublisher.publishEvent(new CodeEmailRequestedEvent(user.getUsername(), formatCode(verificationCode), EmailPurpose.EMAIL_VERIFICATION));
 
-        // Compose email metadata
-        Map<String, Object> mailMetadata = new HashMap<>();
-        mailMetadata.put("template", "email/verification-email");
-        mailMetadata.put("subject", "Your Verification Code");
-        mailMetadata.put("expiryMinutes", VERIFICATION_CODE_EXPIRY);
-        mailMetadata.put("errorMessage", "Failed to send verification code email");
-        
-        // Send verification
-        emailService.sendEmailVerification(username, verificationCode, mailMetadata);
-        
-        log.debug("Successfully sent a new verification, which expires at: {}", expiryAt);
+        log.debug("Verification code saved and email queued, expires at: {}", expiryAt);
     }
 
     @Transactional
@@ -244,8 +233,8 @@ public class AuthServiceImpl implements AuthService {
                     .minus(PASSWORD_RESET_CODE_EXPIRY - 2, ChronoUnit.MINUTES);
 
             if (Instant.now().isBefore(cooldownEnd)) {
-                log.warn("Too many requests for a new code");
-                throw new TooManyRequestsException("Please wait 2 minutes before requesting a new code");
+                log.debug("Password reset requested during cooldown. userId={}", user.getId());
+                return; // same 200 as every other path, no email sent
             }
         }
 
@@ -260,24 +249,17 @@ public class AuthServiceImpl implements AuthService {
         // Persist the user
         userRepository.save(user);
 
-        // Compose email metadata
-        Map<String, Object> mailMetadata = new HashMap<>();
-        mailMetadata.put("template", "email/password-reset-email");
-        mailMetadata.put("subject", "Your Password Reset Code");
-        mailMetadata.put("expiryMinutes", PASSWORD_RESET_CODE_EXPIRY);
-        mailMetadata.put("errorMessage", "Failed to send password reset email");
+        // Publish the event, the email is sent only after this transaction commits
+        eventPublisher.publishEvent(new CodeEmailRequestedEvent(
+                user.getUsername(), formatCode(verificationCode), EmailPurpose.PASSWORD_RESET));
 
-        // Send verification
-        emailService.sendEmailVerification(username, verificationCode, mailMetadata);
-
-        log.debug("Successfully sent a new password rest code, which expires at: {}", expiryAt);
+        log.debug("Password reset code saved and email queued, expires at: {}", expiryAt);
     }
-
 
     @Transactional
     @Override
     public void verifyCode(String username, String verificationCode) {
-        log.debug("Verify code={} for username={}", verificationCode, username);
+        log.debug("Verify code for username={}", username);
         
         // Fetch the user by username
         User user = findUserOrThrow(username);
@@ -317,7 +299,7 @@ public class AuthServiceImpl implements AuthService {
     @Transactional
     @Override
     public TokenResult verifyPasswordResetCode(String username, String verificationCode) {
-        log.debug("Verify password reset code={} for username={}", verificationCode, username);
+        log.debug("Verify password reset code for username={}", username);
 
         // Fetch the user by username
         User user = null;
@@ -325,25 +307,30 @@ public class AuthServiceImpl implements AuthService {
             user = findUserOrThrow(username);
         } catch (UserNotFoundException e) {
             log.warn("Invalid or expired reset code");
-            throw new InvalidVerificationCodeException("Invalid or expired reset code");
+            throw new InvalidVerificationCodeException(INVALID_RESET_CODE);
+        }
+
+        if (!user.isEnabled()) {
+            log.warn("Reset code attempted on unverified account");
+            throw new InvalidVerificationCodeException(INVALID_RESET_CODE);
         }
 
         // Check if the password reset was requested
         if (user.getVerificationCode() == null || user.getVerificationCodeExpiresAt() == null) {
             log.warn("No password reset was requested");
-            throw new InvalidVerificationCodeException("No password reset was requested");
+            throw new InvalidVerificationCodeException(INVALID_RESET_CODE);
         }
 
         // Check the expiration
         if (user.getVerificationCodeExpiresAt().isBefore(Instant.now())){
             log.warn("Password reset code expired at {}.", user.getVerificationCodeExpiresAt());
-            throw new InvalidVerificationCodeException("Password reset code expired");
+            throw new InvalidVerificationCodeException(INVALID_RESET_CODE);
         }
 
         // Check verification code matches
         if (!user.getVerificationCode().equals(verificationCode)){
             log.warn("Password reset code doesn't match.");
-            throw new InvalidVerificationCodeException("Password reset code doesn't match.");
+            throw new InvalidVerificationCodeException(INVALID_RESET_CODE);
         }
 
         // Clear the user verification code and expiration time
@@ -441,6 +428,12 @@ public class AuthServiceImpl implements AuthService {
         return String.format("%06d", number);
     }
 
+    private String formatCode(String code) {
+        return code.length() == 6
+                ? code.substring(0, 3) + " " + code.substring(3)
+                : code;
+    }
+
     private Instant generateCodeExpiryMinutes(int codeExpiry) {
         return Instant.now().plus(codeExpiry, ChronoUnit.MINUTES);
     }
@@ -448,11 +441,10 @@ public class AuthServiceImpl implements AuthService {
     private User findUserOrThrow(String username) {
         log.debug("Fetching a user with username={}", username);
 
-        return userRepository.findByUsername(username.toLowerCase())
+        return userRepository.findByUsername(username)
                 .orElseThrow(() -> {
                     log.warn("User not found with username={}", username);
                     return new UserNotFoundException("User not found with username", username);
                 });
     }
-
 }
