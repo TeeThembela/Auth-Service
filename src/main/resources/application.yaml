@@ -30,9 +30,17 @@ spring:
           auth: true
           starttls:
             enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
 
 application:
   mail-sender: ${MAIL_SENDER}
+  mail:
+    retry:
+      max-retries: 3
+      delay: 2000
+      multiplier: 2.0
   security:
     jwt:
       secret-key: ${JWT_SECRET_KEY}
