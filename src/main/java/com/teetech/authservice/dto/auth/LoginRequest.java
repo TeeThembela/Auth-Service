@@ -18,4 +18,9 @@ public record LoginRequest(
         public LoginRequest{
                 email = (email != null) ? email.trim().toLowerCase() : null;
         }
+
+        @Override
+        public String toString() {
+                return "LoginRequest[email=" + email + ", password=***]";
+        }
 }

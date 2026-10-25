@@ -4,7 +4,7 @@ spring:
   profiles:
     active: local
   datasource:
-    url: jdbc:postgresql://localhost:5433/auth-service
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME:auth-service-db}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
@@ -12,10 +12,7 @@ spring:
     hibernate:
       ddl-auto: validate
     show-sql: false
-    properties:
-      hibernate:
-        format_sql: false
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
   sql:
     init:
       mode: never
@@ -33,6 +30,9 @@ spring:
           connectiontimeout: 5000
           timeout: 5000
           writetimeout: 5000
+  flyway:
+    baseline-on-migrate: true
+
 
 application:
   mail-sender: ${MAIL_SENDER}
@@ -50,3 +50,7 @@ application:
       issuer: ${JWT_ISSUER}
   scheduler:
     refresh-token-cleanup-cron: ${RT_CLEANUP_CRON:0 0 2 * * *}
+
+  logging:
+    level:
+      org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer: ERROR

@@ -1,0 +1,9 @@
+.git
+.idea
+.vscode
+*.iml
+build
+target
+.gradle
+.env
+**/application-local.yaml

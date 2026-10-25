@@ -8,4 +8,8 @@ public record NewPasswordDTO(
         @Size(min = 12, max = 128, message = "Password must be between 12 and 128 characters")
         String password
 ) {
+        @Override
+        public String toString() {
+                return "NewPasswordDTO[password=***" + "]";
+        }
 }

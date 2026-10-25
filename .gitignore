@@ -57,12 +57,14 @@ Thumbs.db
 *.bak
 *.tmp
 
+
+
 # Lombok generated files
 **/lombok.config
 
 # Application-specific
 .env
-.env.lacal
+.env.local
 *.key
 *.pem
 *.p12

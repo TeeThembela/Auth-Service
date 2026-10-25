@@ -14,4 +14,9 @@ public record CodeVerificationRequest(
         @Size(min = 6, max = 6 , message = "Verification code must be exactly 6 digits")
         String code
 ) {
+        @Override
+        public String toString() {
+                return "CodeVerificationRequest[" + "email=" + email +
+                        ", code=***]";
+        }
 }

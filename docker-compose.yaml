@@ -1,0 +1,60 @@
+services:
+  db-postgres:
+    image: postgres:18
+    container_name: auth-service-db
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -h localhost -U ${DB_USERNAME} -d ${DB_NAME}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - internal
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - internal
+
+  auth-service-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service-api
+    restart: on-failure:3
+    env_file: .env
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_NAME: ${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ISSUER: ${JWT_ISSUER}
+      JWT_ACCESS_EXPIRATION: ${JWT_ACCESS_EXPIRATION}
+      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
+      JWT_PASSWORD_RESET_EXPIRATION: ${JWT_PASSWORD_RESET_EXPIRATION}
+      MAIL_SENDER: ${MAIL_SENDER}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_APP_PASSWORD: ${MAIL_APP_PASSWORD}
+    ports:
+      - "8080:8080"
+    depends_on:
+      db-postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+
+networks:
+  internal:
+    driver: bridge

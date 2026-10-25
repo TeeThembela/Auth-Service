@@ -18,4 +18,9 @@ public record RegisterRequest(
         public RegisterRequest{
                 email = (email != null) ? email.trim().toLowerCase() : null;
         }
+
+        @Override
+        public String toString() {
+                return "RegisterRequest[email=" + email + ", password=***]";
+        }
 }

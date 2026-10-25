@@ -17,4 +17,14 @@ public record AuthResponse(
         this(accessToken, "Bearer", accessTokenExpiresAt,
                 refreshTokenExpiresAt);
     }
+
+    @Override
+    public String toString() {
+        return "AuthResponse[" +
+                "accessToken=***" +
+                ", tokenType=" + tokenType +
+                ", accessTokenExpiresAt=" + accessTokenExpiresAt +
+                ", refreshTokenExpiresAt=" + refreshTokenExpiresAt +
+                "]";
+    }
 }
