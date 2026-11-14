@@ -14,7 +14,10 @@ public class SecurityConstants {
             "/api/v1/auth/verify",
             "/api/v1/auth/forgot-password",
             "/api/v1/auth/verify-reset-code",
-            "/api/v1/auth/reset-password"
+            "/api/v1/auth/reset-password",
+            "/swagger-ui/**",
+            "/swagger-ui.html",
+            "/v3/api-docs/**",
     };
     public static final int VERIFICATION_CODE_EXPIRY = 15;
     public static final int PASSWORD_RESET_CODE_EXPIRY = 10;
