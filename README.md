@@ -44,8 +44,8 @@ rotation, logout (one device or all), and password reset, all behind a documente
 Requirements: Docker with Compose v2.
 
 ```bash
-git clone https://github.com/<your-username>/<repo-name>.git
-cd <repo-name>
+git clone https://github.com/TeeThembela/Auth-Service.git
+cd <Auth-Service>
 
 # 1. Create your environment file
 cp .env.example .env            # PowerShell: Copy-Item .env.example .env
