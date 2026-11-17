@@ -45,7 +45,7 @@ Requirements: Docker with Compose v2.
 
 ```bash
 git clone https://github.com/TeeThembela/Auth-Service.git
-cd <Auth-Service>
+cd Auth-Service
 
 # 1. Create your environment file
 cp .env.example .env            # PowerShell: Copy-Item .env.example .env
@@ -178,7 +178,7 @@ sequenceDiagram
 | Decision | Why |
 |---|---|
 | Access tokens are validated from their claims only | No database lookup per request, so protected endpoints stay stateless and cheap. |
-| Refresh tokens are stored server-side and rotated on every use | Gives real revocation (logout, logout-all, password reset) and detects replay of old tokens. |
+| Refresh tokens are stored server-side and rotated on every use | Gives real revocation (logout, logout-all, password reset) and rejects reuse of rotated tokens. |
 | A `token_type` claim (`access`, `refresh`, `password_reset`) | A token issued for one purpose cannot be accepted for another. |
 | Refresh and reset tokens travel in `HttpOnly`, `Secure`, `SameSite=Strict` cookies | They are out of reach of JavaScript (XSS) and are not sent cross-site. |
 | Reset flow answers identically for known and unknown emails | Prevents using the endpoints to discover which accounts exist. |
